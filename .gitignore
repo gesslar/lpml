@@ -1,0 +1,7 @@
+node_modules
+*.vsix
+better-json5
+.yarn
+dist
+.vscode-test-web
+test.json5
