@@ -266,7 +266,7 @@
     "vscode-uri": "^3.0.8"
   },
   "devDependencies": {
-    "@types/node": "22.x",
+    "@types/node": "25.x",
     "@types/vscode": "^1.107.0",
     "@typescript-eslint/eslint-plugin": "^8.36.0",
     "@typescript-eslint/parser": "^8.50.1",
