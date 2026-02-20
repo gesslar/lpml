@@ -273,7 +273,7 @@
     "@vscode/test-web": "^0.0.79",
     "@vscode/vsce": "^3.7.1",
     "assert": "^2.1.0",
-    "eslint": "^10.0.0",
+    "eslint": "^10.0.1",
     "ovsx": "^0.10.9",
     "process": "^0.11.10",
     "ts-loader": "^9.5.1",
