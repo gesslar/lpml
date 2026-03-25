@@ -1,5 +1,3 @@
-<div align="center">
-
 # LPML Language Support
 
 > Syntax highlighting for LPML (LPC Markup Language) files in Visual Studio Code
@@ -8,7 +6,7 @@
 
 LPML is a human-friendly data serialization format designed for MUD configuration files. It extends JSON5 with features like spacey keys, file includes, string concatenation, and multiline string folding.
 
-See [LPML-SPEC.md](LPML-SPEC.md) for the complete specification.
+See [LPML-SPEC.md](https://spec.gesslar.dev/lpml/) for the complete specification.
 
 ## Features
 
