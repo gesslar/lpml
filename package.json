@@ -2,7 +2,7 @@
   "name": "lpml",
   "displayName": "LPML stands for LPC Markup Language",
   "description": "Syntax highlighting for LPML (LPC Markup Language) files.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "engines": {
     "vscode": ">=1.104.0",
     "node": ">=24.13.0"

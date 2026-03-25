@@ -28,7 +28,7 @@ See [LPML-SPEC.md](LPML-SPEC.md) for the complete specification.
 
 This extension builds on work from [better-json5](https://github.com/BlueGlassBlock/better-json5) by BlueGlassBlock.
 
-LPML specification and language design by Gesslar for the Oxidus MUD codebase.
+LPML specification and language design by gesslar.
 
 ## License
 
