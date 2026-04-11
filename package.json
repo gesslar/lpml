@@ -7,7 +7,7 @@
     "vscode": ">=1.104.0",
     "node": ">=24.11.0"
   },
-  "license": "Unlicense",
+  "license": "0BSD",
   "publisher": "gesslar",
   "repository": {
     "url": "https://github.com/gesslar/lpml"
