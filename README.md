@@ -30,4 +30,4 @@ LPML specification and language design by Gesslar for the Oxidus MUD codebase.
 
 ## License
 
-`lpml` is released into the public domain under the [Unlicense](LICENSE.md).
+`lpml` is released under the [0BSD](LICENSE.txt).
