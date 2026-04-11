@@ -5,7 +5,7 @@
   "version": "0.1.2",
   "engines": {
     "vscode": ">=1.104.0",
-    "node": ">=24.13.0"
+    "node": ">=24.11.0"
   },
   "license": "Unlicense",
   "publisher": "gesslar",
@@ -18,10 +18,11 @@
   ],
   "scripts": {
     "pr": "gt submit -p --ai",
-    "prepackage": "node -e \"require('fs').readdirSync('vsix').filter(f=>f.endsWith('.vsix')).forEach(f=>require('fs').unlinkSync('vsix/'+f))\"",
+    "prepackage": "node scripts/assure-clean-vsix-directory.js",
     "package": "npx @vscode/vsce package --no-dependencies --skip-license -o vsix/",
-    "publish:vsce": "npm run package && npx @vscode/vsce publish --packagePath vsix/*.vsix --pat $VSX_MARKETPLACE_ACCESS_TOKEN",
-    "publish:ovsx": "npm run package && npx ovsx publish --packagePath vsix/*.vsix --pat $OVSX_ACCESS_TOKEN",
+    "prepublish": "npm run package",
+    "publish:vsce": "npx @vscode/vsce publish --packagePath vsix/*.vsix --pat $VSX_MARKETPLACE_ACCESS_TOKEN",
+    "publish:ovsx": "npx ovsx publish --packagePath vsix/*.vsix --pat $OVSX_ACCESS_TOKEN",
     "patch": "npm version patch",
     "minor": "npm version minor",
     "major": "npm version major"
