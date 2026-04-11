@@ -12,4 +12,4 @@ This project is based on [better-json5](https://github.com/BlueGlassBlock/better
 
 ## LPML Extensions
 
-LPML-specific features (file includes, string concatenation, spacey keys) designed and implemented by Gesslar for the Oxidus MUD codebase.
+LPML-specific features (file includes, string concatenation, spacey keys) designed and implemented by gesslar.
