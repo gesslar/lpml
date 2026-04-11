@@ -6,7 +6,7 @@
  * built package.
  *
  * Usage:
- *   node scripts/assure-clean-vsix-directory.js
+ *   node scripts/assure-clean-vsix-directory.mjs
  *
  */
 
