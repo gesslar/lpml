@@ -3,11 +3,18 @@
  * /adm/simul_efun/lpml.lpc, producing plain JavaScript (JSON-compatible)
  * values.
  *
- * Differences from the LPC original, all forced by the target being JSON:
+ * Differences from the LPC original forced by the target being JSON:
  * - `true`/`false` decode to booleans rather than 1/0.
- * - `null`, `undefined`, `Infinity` and `NaN` decode to `null`.
+ * - `null`, `undefined`, `Infinity`, `NaN` and overflowing literals decode
+ *   to `null`.
  * - `MAX_INT`/`MAX_FLOAT` decode to configurable numbers (see
  *   {@link DecodeOptions}).
+ *
+ * Deliberately stricter than the LPC original:
+ * - `"#path"` includes only expand where a token begins, never inside
+ *   comments or other strings.
+ * - Incomplete numbers (`0x`, `.`, `1e+`) are syntax errors.
+ * - With `root`, includes cannot read outside it.
  */
 /** FluffOS MAX_INT (LONG_MAX). Not exactly representable as a Number. */
 export declare const LPC_MAX_INT = 9223372036854776000;

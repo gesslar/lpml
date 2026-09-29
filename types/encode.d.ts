@@ -27,6 +27,10 @@ export type EncodeOptions = {
  * they overflow, and long strings wrapped with LPML string concatenation so
  * the decoded value is unchanged.
  *
+ * BigInts are written exactly (useful for 64-bit LPC ints), but decode()
+ * returns Numbers, so one beyond Number.MAX_SAFE_INTEGER will not survive a
+ * JavaScript round trip.
+ *
  * @param {unknown} value - The value to serialize.
  * @param {EncodeOptions|number} [options] - Options, or just the width.
  * @returns {string} The LPML text, newline-terminated.

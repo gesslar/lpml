@@ -3,11 +3,18 @@
  * /adm/simul_efun/lpml.lpc, producing plain JavaScript (JSON-compatible)
  * values.
  *
- * Differences from the LPC original, all forced by the target being JSON:
+ * Differences from the LPC original forced by the target being JSON:
  * - `true`/`false` decode to booleans rather than 1/0.
- * - `null`, `undefined`, `Infinity` and `NaN` decode to `null`.
+ * - `null`, `undefined`, `Infinity`, `NaN` and overflowing literals decode
+ *   to `null`.
  * - `MAX_INT`/`MAX_FLOAT` decode to configurable numbers (see
  *   {@link DecodeOptions}).
+ *
+ * Deliberately stricter than the LPC original:
+ * - `"#path"` includes only expand where a token begins, never inside
+ *   comments or other strings.
+ * - Incomplete numbers (`0x`, `.`, `1e+`) are syntax errors.
+ * - With `root`, includes cannot read outside it.
  */
 
 import fs from "node:fs"
@@ -20,6 +27,10 @@ export const LPC_MAX_INT = 9223372036854775807
 export const LPC_MAX_FLOAT = Number.MAX_VALUE
 
 const MAX_INCLUDE_DEPTH = 64
+
+// `\#` is the include escape; LPC strips it from the whole source instead,
+// which comes to the same thing inside strings.
+const ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "#": "#"}
 
 /**
  * @typedef {object} DecodeOptions
@@ -82,20 +93,6 @@ const hexDigit = ch => {
   return -1
 }
 
-/** Equivalent of LPC to_int() (strtol semantics). */
-const toInt = str => {
-  const n = parseInt(str, 10)
-
-  return Number.isNaN(n) ? 0 : n
-}
-
-/** Equivalent of LPC to_float() (strtod semantics). */
-const toFloat = str => {
-  const n = parseFloat(str)
-
-  return Number.isNaN(n) ? 0 : n
-}
-
 /**
  * Resolves an include path relative to a base directory. Absolute paths, or
  * a missing/non-absolute base, are returned unchanged.
@@ -156,10 +153,20 @@ function includeContext(options) {
   const {root} = options
 
   if(root) {
+    const realRoot = path.resolve(root)
+
     return {
-      read: options.readFile ?? (file => readOrNull(
-        file.startsWith("/") ? path.join(root, file) : file
-      )),
+      // Like the driver, never read outside the mudlib: a path that climbs
+      // above the root is treated as not found.
+      read: options.readFile ?? (file => {
+        const real = path.join(realRoot, file)
+        const rel = path.relative(realRoot, real)
+
+        if(rel.startsWith("..") || path.isAbsolute(rel))
+          return null
+
+        return readOrNull(real)
+      }),
       resolve: resolveRelativePath,
       dirname: file => {
         const slash = file.lastIndexOf("/")
@@ -191,108 +198,17 @@ function readOrNull(file) {
   }
 }
 
-/**
- * Replaces `"#path"` / `'#path'` includes with the referenced file's
- * contents, and `\#` escapes with a literal `#`.
- *
- * @param {string} text - LPML source.
- * @param {string} basePath - Base directory for relative includes.
- * @param {IncludeContext} ctx - How to resolve and read includes.
- * @param {number} depth - Current include depth.
- * @returns {string} Preprocessed source.
- */
-function preprocess(text, basePath, ctx, depth) {
-  if(depth > MAX_INCLUDE_DEPTH)
-    throw new Error(`LPML include depth exceeded ${MAX_INCLUDE_DEPTH} (circular include?)`)
-
-  let result = ""
-  let source = text
-
-  while(source.length > 0) {
-    const candidates = [
-      [source.indexOf("\"#"), false, false],
-      [source.indexOf("'#"), true, false],
-      [source.indexOf("\"\\#"), false, true],
-      [source.indexOf("'\\#"), true, true],
-    ]
-
-    let start = -1
-    let isSingle = false
-    let isEscaped = false
-
-    for(const [pos, single, escaped] of candidates) {
-      if(pos !== -1 && (start === -1 || pos < start)) {
-        start = pos
-        isSingle = single
-        isEscaped = escaped
-      }
-    }
-
-    if(start === -1) {
-      result += source
-      break
-    }
-
-    if(isEscaped) {
-      result += source.slice(0, start) + (isSingle ? "'#" : "\"#")
-      source = source.slice(start + 3)
-      continue
-    }
-
-    result += source.slice(0, start)
-
-    const remainder = source.slice(start + 2)
-    const closeQuote = isSingle ? "'" : "\""
-    let closePos = remainder.indexOf(closeQuote)
-
-    while(closePos !== -1) {
-      let backslashes = 0
-
-      for(let i = closePos - 1; i >= 0 && remainder[i] === "\\"; i--)
-        backslashes++
-
-      if(backslashes % 2 === 0)
-        break
-
-      closePos = remainder.indexOf(closeQuote, closePos + 1)
-    }
-
-    if(closePos === -1) {
-      result += source.slice(start, start + 2)
-      source = source.slice(start + 2)
-      continue
-    }
-
-    const end = start + 2 + closePos
-    const filePath = ctx.resolve(source.slice(start + 2, end), basePath)
-    let fileText = ctx.read(filePath)
-
-    if(fileText === null || fileText === undefined) {
-      // Not found - keep the original string.
-      result += source.slice(start, end + 1)
-      source = source.slice(end + 1)
-      continue
-    }
-
-    if(fileText.endsWith("\n"))
-      fileText = fileText.slice(0, -1)
-
-    result += preprocess(fileText, ctx.dirname(filePath), ctx, depth + 1)
-    source = source.slice(end + 1)
-  }
-
-  return result.replaceAll("\\#", "#")
-}
-
 /** Recursive-descent LPML parser over a single source string. */
 class Parser {
   /**
    * Creates a parser positioned at the start of the text.
    *
-   * @param {string} text - Preprocessed LPML source.
+   * @param {string} text - LPML source.
    * @param {DecodeOptions} options - Decode options.
+   * @param {IncludeContext|null} includes - Include handling, or null to
+   *  leave `"#path"` strings alone.
    */
-  constructor(text, options) {
+  constructor(text, options, includes) {
     // NUL sentinel marks end of input, as in the LPC implementation.
     this.text = `${text}\0`
     this.pos = 0
@@ -300,6 +216,12 @@ class Parser {
     this.char = 1
     this.maxInt = options.maxInt ?? Number.MAX_SAFE_INTEGER
     this.maxFloat = options.maxFloat ?? LPC_MAX_FLOAT
+    this.includes = includes
+    // Spliced-in include regions, innermost last. Each knows where it ends
+    // in the text, how deep it is, and the directory its own includes
+    // resolve against.
+    this.scopes = [{end: Infinity, depth: 0, base: options.basePath}]
+    this.missingIncludeAt = -1
   }
 
   get ch() {
@@ -389,8 +311,77 @@ class Parser {
         }
       }
 
+      if(this.expandInclude())
+        continue
+
       break
     }
+  }
+
+  /**
+   * If the next token is a `"#path"` string, replaces it in the text with
+   * the file's contents. Unlike the LPC implementation, which rewrites the
+   * raw source up front, this only fires where a token begins, so `"#`
+   * inside comments or other strings is left alone.
+   *
+   * @returns {boolean} True if an include was spliced in.
+   */
+  expandInclude() {
+    const quote = this.ch
+
+    if(!this.includes || (quote !== "\"" && quote !== "'") ||
+       this.peek() !== "#" || this.pos === this.missingIncludeAt)
+      return false
+
+    let close = this.pos + 2
+
+    for(; close < this.text.length - 1; close++) {
+      if(this.text[close] === "\\")
+        close++
+      else if(this.text[close] === quote)
+        break
+    }
+
+    // Unterminated; let the string parser report it.
+    if(this.text[close] !== quote)
+      return false
+
+    while(this.scopes.at(-1).end <= this.pos)
+      this.scopes.pop()
+
+    const scope = this.scopes.at(-1)
+    const target = this.text.slice(this.pos + 2, close)
+    const file = this.includes.resolve(target, scope.base)
+    let content = this.includes.read(file)
+
+    if(content === null || content === undefined) {
+      // Not found - parse it as an ordinary string.
+      this.missingIncludeAt = this.pos
+
+      return false
+    }
+
+    if(scope.depth >= MAX_INCLUDE_DEPTH)
+      this.error(`Include depth exceeded ${MAX_INCLUDE_DEPTH} (circular include?)`)
+
+    if(content.endsWith("\n"))
+      content = content.slice(0, -1)
+
+    const delta = content.length - (close + 1 - this.pos)
+
+    for(const open of this.scopes)
+      open.end += delta
+
+    this.scopes.push({
+      end: this.pos + content.length,
+      depth: scope.depth + 1,
+      base: this.includes.dirname(file),
+    })
+    this.text =
+      this.text.slice(0, this.pos) + content + this.text.slice(close + 1)
+    this.missingIncludeAt = -1
+
+    return true
   }
 
   parseIdentifier() {
@@ -620,21 +611,19 @@ class Parser {
       out = trim(out)
     }
 
+    // Single left-to-right pass: same result as the LPC implementation's
+    // sequential replacements, without its placeholder colliding with input.
+    // Unknown escapes keep their backslash.
     if(escActive) {
-      const placeholder = "\x01BACKSLASH\x01"
+      out = out.replace(/\\(u[0-9a-fA-F]{4}|[\s\S])/g, (match, esc) => {
+        if(esc.length > 1)
+          return String.fromCharCode(parseInt(esc.slice(1), 16))
 
-      out = out
-        .replaceAll("\\\\", placeholder)
-        .replaceAll(`\\${quote}`, quote)
-        .replaceAll("\\b", "\b")
-        .replaceAll("\\f", "\f")
-        .replaceAll("\\n", "\n")
-        .replaceAll("\\r", "\r")
-        .replaceAll("\\t", "\t")
-        .replaceAll("\\/", "/")
-        .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-          String.fromCharCode(parseInt(hex, 16)))
-        .replaceAll(placeholder, "\\")
+        if(esc === "\\" || esc === quote || esc === "/")
+          return esc
+
+        return ESCAPES[esc] ?? match
+      })
     }
 
     // Adjacent string concatenation.
@@ -702,26 +691,36 @@ class Parser {
           this.next()
 
         const digits = this.text.slice(from, this.pos)
-        const result = digits.length ? parseInt(digits, radix) : 0
+
+        // Stricter than LPC, where sscanf() reads an empty `0x` as 0.
+        if(!digits.length)
+          this.error("Expected digits in number")
+
+        const result = parseInt(digits, radix)
 
         return negative ? -result : result
       }
     }
 
-    if(ch === ".") {
-      dot = this.pos
-      this.next()
-    }
+    // Stricter than LPC, whose to_int()/to_float() read `.`, `-` or `1e+`
+    // as whatever prefix parses: every mantissa and exponent needs a digit.
+    let mantissaDigits = 0
+    let expDigits = 0
 
     while(to === -1 && this.pos < this.text.length) {
       ch = this.ch
 
       if(ch >= "0" && ch <= "9") {
+        if(exp === -1)
+          mantissaDigits++
+        else
+          expDigits++
+
         this.next()
       } else if(ch === "." && dot === -1 && exp === -1) {
         dot = this.pos
         this.next()
-      } else if((ch === "e" || ch === "E") && exp === -1) {
+      } else if((ch === "e" || ch === "E") && exp === -1 && mantissaDigits) {
         exp = this.pos
         this.next()
 
@@ -732,12 +731,13 @@ class Parser {
       }
     }
 
-    if(to === -1)
-      to = this.pos
+    if(!mantissaDigits || (exp !== -1 && !expDigits))
+      this.error("Expected digits in number")
 
-    const number = this.text.slice(from, to)
+    const result = Number(this.text.slice(from, to === -1 ? this.pos : to))
 
-    return dot !== -1 || exp !== -1 ? toFloat(number) : toInt(number)
+    // Overflow (1e999) is Infinity, which decodes to null like the keyword.
+    return Number.isFinite(result) ? result : null
   }
 
   parseValue() {
@@ -809,11 +809,9 @@ export function decode(text, options = {}) {
   if(typeof text !== "string")
     throw new TypeError("decode: text must be a string")
 
-  if(options.includes !== false) {
-    text = preprocess(text, options.basePath, includeContext(options), 0)
-  }
+  const includes = options.includes !== false ? includeContext(options) : null
 
-  return new Parser(text, options).parse()
+  return new Parser(text, options, includes).parse()
 }
 
 /**

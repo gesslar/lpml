@@ -117,5 +117,9 @@ describe("encode containers", () => {
     assert.equal(encode({a: shared, b: shared}), "{ a: [1], b: [1] }\n")
   })
 
+  it("sparse array holes encode as null", () => {
+    assert.equal(encode([, 1]), "[null, 1]\n")
+  })
+
   it("function value errors", () => assert.throws(() => encode({fn() {}}), TypeError))
 })

@@ -41,6 +41,8 @@ describe("decode numbers", () => {
     ["0xFF", 255], ["0XFF", 255], ["0xff", 255], ["-0xFF", -255],
     ["0o77", 63], ["0O17", 15], ["-0o17", -15],
     ["0b1010", 10], ["0B11", 3], ["-0b10", -2],
+    ["1e999", null], ["-1e999", null],
+    ["-.5", -0.5], ["+.5e-1", 0.05], ["1.e2", 100],
   ]
 
   for(const [text, expected] of cases)
@@ -60,6 +62,9 @@ describe("decode strings", () => {
     ["escaped forward slash", "\"a\\/b\"", "a/b"],
     ["escaped single quote", "'it\\'s'", "it's"],
     ["unknown escape kept verbatim", "\"a\\qb\"", "a\\qb"],
+    ["escaped backslash before n", "\"a\\\\nb\"", "a\\nb"],
+    ["placeholder-like text survives", "\"x\x01BACKSLASH\x01\\\\z\"", "x\x01BACKSLASH\x01\\z"],
+    ["surrogate pair escape", "\"\\uD83D\\uDE00\"", "\u{1F600}"],
     ["BMP unicode escape", "\"caf\\u00e9\"", "café"],
     ["ASCII unicode escape", "\"\\u0041\"", "A"],
     ["adjacent strings join with a space", "\"A\" \"B\" \"C\"", "A B C"],
@@ -131,6 +136,8 @@ describe("decode malformed input", () => {
     ["empty spacey key", "{ : 1 }"],
     ["trailing garbage", "1 2"],
     ["unexpected character", "@"],
+    ...["0x", "-0x", "0o", "0b", ".", "-", "+", "1e", "1e+", ".e5", "[-]"]
+      .map(n => [`incomplete number ${n}`, n]),
   ]
 
   for(const [name, text] of cases)
@@ -176,6 +183,61 @@ describe("decode includes", () => {
     assert.equal(r.x.dex, 15)
   })
 
+  it("rooted includes cannot climb out of root", () => {
+    const root = path.join(fixtures, "rooted")
+
+    // Absolute and ./.. paths reach the reader, which refuses them.
+    for(const include of ["#/../lpml_stats.lpml", "#./../lpml_stats.lpml"])
+      assert.equal(decode(`"${include}"`, {root, basePath: "/"}), include)
+
+    // A leading .. above the root is rejected by the resolver, as in LPC.
+    assert.throws(() => decode("\"#../lpml_stats.lpml\"", {root, basePath: "/"}),
+      /Invalid path relative resolution/)
+
+    // Same for a nested include.
+    assert.equal(decodeFile(path.join(root, "inside.lpml"), {root}).inner,
+      "#./../lpml_stats.lpml")
+  })
+
+  it("only expands includes where a token begins", () => {
+    const read = []
+    const readFile = f => (read.push(f), "42")
+    const r = decode(`{
+      // "#/line-comment"
+      /* "#/block-comment" */
+      a: "say \\"#/mid-string\\"",
+      b: '"#/in-single-quotes"',
+      dragon's hoard: "#/real",
+    }`, {readFile})
+
+    assert.deepEqual(read, ["/real"])
+    assert.deepEqual(r, {
+      "a": "say \"#/mid-string\"",
+      "b": "\"#/in-single-quotes\"",
+      "dragon's hoard": 42,
+    })
+  })
+
+  it("commented-out circular include is ignored", () => {
+    assert.deepEqual(decode("// \"#/a\"\n[1]", {readFile: () => "\"#/a\""}), [1])
+  })
+
+  it("include scope ends with the included text", () => {
+    const files = {"/lib/sub/x": "[\"#./leaf\"]", "/lib/sub/leaf": "1", "/lib/y": "2"}
+    const read = []
+    const readFile = f => (read.push(f), files[f] ?? null)
+    const r = decode("[\"#./sub/x\", \"#./y\"]", {root: "/unused", basePath: "/lib", readFile})
+
+    assert.deepEqual(r, [[1], 2])
+    assert.deepEqual(read, ["/lib/sub/x", "/lib/sub/leaf", "/lib/y"])
+  })
+
+  it("include can splice a fragment", () => {
+    const readFile = f => (f === "/frag" ? "a: 1, b: 2" : null)
+
+    assert.deepEqual(decode("{ \"#/frag\", c: 3 }", {readFile}), {a: 1, b: 2, c: 3})
+  })
+
   it("custom reader", () => {
     const r = decode("[\"#/a\"]", {readFile: f => (f === "/a" ? "42\n" : null)})
 
@@ -193,7 +255,7 @@ describe("decode includes", () => {
   })
 
   it("circular include errors", () => {
-    assert.throws(() => decode("\"#/a\"", {readFile: () => "\"#/a\""}), /include depth/)
+    assert.throws(() => decode("\"#/a\"", {readFile: () => "\"#/a\""}), /include depth/i)
   })
 })
 

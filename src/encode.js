@@ -321,7 +321,8 @@ function normalize(value, stack = [], where = "$") {
   let out
 
   if(Array.isArray(value)) {
-    out = value.map((v, i) => normalize(v, stack, `${where}[${i}]`))
+    // Array.from visits holes as undefined, so sparse arrays encode as null.
+    out = Array.from(value, (v, i) => normalize(v, stack, `${where}[${i}]`))
   } else {
     out = {}
 
@@ -343,6 +344,10 @@ function normalize(value, stack = [], where = "$") {
  * where safe, sorted keys, trailing commas, containers expanded only when
  * they overflow, and long strings wrapped with LPML string concatenation so
  * the decoded value is unchanged.
+ *
+ * BigInts are written exactly (useful for 64-bit LPC ints), but decode()
+ * returns Numbers, so one beyond Number.MAX_SAFE_INTEGER will not survive a
+ * JavaScript round trip.
  *
  * @param {unknown} value - The value to serialize.
  * @param {EncodeOptions|number} [options] - Options, or just the width.
