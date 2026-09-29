@@ -160,7 +160,8 @@ function includeContext(options) {
         const real = path.join(realRoot, file)
         const rel = path.relative(realRoot, real)
 
-        if(rel.startsWith("..") || path.isAbsolute(rel))
+        if(rel === ".." || rel.startsWith(`..${path.sep}`) ||
+           path.isAbsolute(rel))
           return null
 
         return readOrNull(real)

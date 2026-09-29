@@ -194,6 +194,9 @@ describe("decode includes", () => {
     assert.throws(() => decode("\"#../lpml_stats.lpml\"", {root, basePath: "/"}),
       /Invalid path relative resolution/)
 
+    // A filename that merely starts with two dots is fine.
+    assert.deepEqual(decode("\"#/..dotted.lpml\"", {root, basePath: "/"}), {ok: true})
+
     // Same for a nested include.
     assert.equal(decodeFile(path.join(root, "inside.lpml"), {root}).inner,
       "#./../lpml_stats.lpml")
