@@ -1,0 +1,61 @@
+{
+  "name": "@gesslar/lpml",
+  "description": "Decode LPML (LPC Markup Language) to JSON and encode JSON to LPML.",
+  "author": {
+    "name": "gesslar",
+    "email": "bmw@gesslar.dev",
+    "url": "https://gesslar.dev"
+  },
+  "version": "1.0.0",
+  "license": "0BSD",
+  "homepage": "https://github.com/gesslar/lpml#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gesslar/lpml.git"
+  },
+  "keywords": [
+    "lpml",
+    "lpc",
+    "mud",
+    "fluffos",
+    "json",
+    "json5",
+    "config"
+  ],
+  "type": "module",
+  "main": "src/index.js",
+  "bin": {
+    "lpml": "src/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src/",
+    "types/",
+    "LICENSE.txt"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "lint": "eslint src/ test/",
+    "test": "node --test test/**/*.test.js",
+    "clean": "rm -rfv ./dist",
+    "build": "mkdir -pv ./dist && npm pack --pack-destination ./dist/",
+    "update": "npx -y npm-check-updates -u && npm install",
+    "submit": "npm publish --access public --//registry.npmjs.org/:_authToken=\"${NPM_ACCESS_TOKEN}\"",
+    "patch": "npm version patch",
+    "minor": "npm version minor",
+    "major": "npm version major",
+    "types": "node -e \"require('fs').rmSync('types',{recursive:true,force:true});\" && tsc -p tsconfig.types.json"
+  },
+  "devDependencies": {
+    "@gesslar/uglier": "^2.4.1",
+    "eslint": "^10.11.0",
+    "typescript": "^7.0.2"
+  }
+}
