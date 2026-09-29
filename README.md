@@ -78,8 +78,8 @@ lpml encode --no-sort < data.json      # keep key order
 
 ## Differences from the LPC implementation
 
-Most of these follow from JSON's data model; the include, number and `root`
-items are deliberate tightenings.
+Most of these follow from JSON's data model; the last two make up for there
+being no driver to lean on.
 
 - `true`/`false` decode to booleans (LPC: `1`/`0`) and encode back as
   `true`/`false`.
@@ -93,11 +93,6 @@ items are deliberate tightenings.
   `Number.MAX_SAFE_INTEGER` does not survive a JS round trip.
 - Sparse array holes encode as `null`, as `JSON.stringify` does.
 - A number literal that overflows (`1e999`) decodes to `null`, like `Infinity`.
-- Includes only expand where a token begins, so a `"#path"` inside a comment
-  or inside another string is left alone (LPC rewrites the raw source, so it
-  expands those too).
-- Incomplete numbers (`0x`, `.`, `-`, `1e+`) are syntax errors rather than
-  decoding to `0`/`1`.
 - With `root`, includes can't read outside the root (the driver enforces this
   in the MUD); such an include is left as its string, like a missing file.
 - Circular includes fail after 64 levels instead of recursing without limit.

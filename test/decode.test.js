@@ -199,7 +199,7 @@ describe("decode includes", () => {
       "#./../lpml_stats.lpml")
   })
 
-  it("only expands includes where a token begins", () => {
+  it("only whole string values are includes", () => {
     const read = []
     const readFile = f => (read.push(f), "42")
     const r = decode(`{
@@ -207,6 +207,7 @@ describe("decode includes", () => {
       /* "#/block-comment" */
       a: "say \\"#/mid-string\\"",
       b: '"#/in-single-quotes"',
+      "#/key": 1,
       dragon's hoard: "#/real",
     }`, {readFile})
 
@@ -214,15 +215,20 @@ describe("decode includes", () => {
     assert.deepEqual(r, {
       "a": "say \"#/mid-string\"",
       "b": "\"#/in-single-quotes\"",
+      "#/key": 1,
       "dragon's hoard": 42,
     })
+  })
+
+  it("\\# mid-string yields a literal hash", () => {
+    assert.equal(decode("\"a\\#b\""), "a#b")
   })
 
   it("commented-out circular include is ignored", () => {
     assert.deepEqual(decode("// \"#/a\"\n[1]", {readFile: () => "\"#/a\""}), [1])
   })
 
-  it("include scope ends with the included text", () => {
+  it("nested includes resolve from their own directory", () => {
     const files = {"/lib/sub/x": "[\"#./leaf\"]", "/lib/sub/leaf": "1", "/lib/y": "2"}
     const read = []
     const readFile = f => (read.push(f), files[f] ?? null)
@@ -232,10 +238,10 @@ describe("decode includes", () => {
     assert.deepEqual(read, ["/lib/sub/x", "/lib/sub/leaf", "/lib/y"])
   })
 
-  it("include can splice a fragment", () => {
+  it("an included file must be a complete value", () => {
     const readFile = f => (f === "/frag" ? "a: 1, b: 2" : null)
 
-    assert.deepEqual(decode("{ \"#/frag\", c: 3 }", {readFile}), {a: 1, b: 2, c: 3})
+    assert.throws(() => decode("{ x: \"#/frag\" }", {readFile}), LpmlSyntaxError)
   })
 
   it("custom reader", () => {

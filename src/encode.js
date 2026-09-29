@@ -21,8 +21,8 @@ const DEFAULT_WIDTH = 79
  */
 
 /**
- * Quotes a string for LPML output. Any `#` directly after a quote character
- * is escaped as `\#` so the include preprocessor leaves it alone.
+ * Quotes a string for LPML output. A leading `#` is escaped as `\#` so the
+ * decoder does not read the string as a file include.
  *
  * @param {string} str - The string.
  * @returns {string} Double-quoted, escaped string.
@@ -37,9 +37,7 @@ function quote(str) {
     .replaceAll("\b", "\\b")
     .replaceAll("\f", "\\f")
 
-  return `"${str}"`
-    .replaceAll("\"#", "\"\\#")
-    .replaceAll("'#", "'\\#")
+  return str.startsWith("#") ? `"\\${str}"` : `"${str}"`
 }
 
 /**

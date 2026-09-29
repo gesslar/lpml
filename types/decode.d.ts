@@ -11,10 +11,9 @@
  *   {@link DecodeOptions}).
  *
  * Deliberately stricter than the LPC original:
- * - `"#path"` includes only expand where a token begins, never inside
- *   comments or other strings.
- * - Incomplete numbers (`0x`, `.`, `1e+`) are syntax errors.
- * - With `root`, includes cannot read outside it.
+ * - With `root`, includes cannot read outside it (in the MUD, the driver
+ *   enforces this).
+ * - Circular includes fail after 64 levels.
  */
 /** FluffOS MAX_INT (LONG_MAX). Not exactly representable as a Number. */
 export declare const LPC_MAX_INT = 9223372036854776000;

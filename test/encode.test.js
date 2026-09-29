@@ -49,6 +49,10 @@ describe("encode include safety", () => {
   it("leading # survives", () => assert.equal(roundTrip("#ff0000"), "#ff0000"))
   it("quote-hash mid-string survives", () =>
     assert.equal(roundTrip("say \"#1\" it's '#2'"), "say \"#1\" it's '#2'"))
+  it("only a leading # is escaped", () => {
+    assert.equal(encode("#a \"#b\" '#c'"), "\"\\#a \\\"#b\\\" '#c'\"\n")
+  })
+
   it("hash key survives", () => assert.deepEqual(roundTrip({"#tag": 1}), {"#tag": 1}))
   it("backslash before hash survives", () => assert.equal(roundTrip("a\\#b"), "a\\#b"))
 })

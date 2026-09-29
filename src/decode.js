@@ -11,10 +11,9 @@
  *   {@link DecodeOptions}).
  *
  * Deliberately stricter than the LPC original:
- * - `"#path"` includes only expand where a token begins, never inside
- *   comments or other strings.
- * - Incomplete numbers (`0x`, `.`, `1e+`) are syntax errors.
- * - With `root`, includes cannot read outside it.
+ * - With `root`, includes cannot read outside it (in the MUD, the driver
+ *   enforces this).
+ * - Circular includes fail after 64 levels.
  */
 
 import fs from "node:fs"
@@ -28,8 +27,7 @@ export const LPC_MAX_FLOAT = Number.MAX_VALUE
 
 const MAX_INCLUDE_DEPTH = 64
 
-// `\#` is the include escape; LPC strips it from the whole source instead,
-// which comes to the same thing inside strings.
+// `\#` escapes a leading `#` so the string is not read as an include.
 const ESCAPES = {"b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "#": "#"}
 
 /**
@@ -207,8 +205,9 @@ class Parser {
    * @param {DecodeOptions} options - Decode options.
    * @param {IncludeContext|null} includes - Include handling, or null to
    *  leave `"#path"` strings alone.
+   * @param {number} [depth=0] - Include nesting depth of this text.
    */
-  constructor(text, options, includes) {
+  constructor(text, options, includes, depth = 0) {
     // NUL sentinel marks end of input, as in the LPC implementation.
     this.text = `${text}\0`
     this.pos = 0
@@ -216,12 +215,9 @@ class Parser {
     this.char = 1
     this.maxInt = options.maxInt ?? Number.MAX_SAFE_INTEGER
     this.maxFloat = options.maxFloat ?? LPC_MAX_FLOAT
+    this.options = options
     this.includes = includes
-    // Spliced-in include regions, innermost last. Each knows where it ends
-    // in the text, how deep it is, and the directory its own includes
-    // resolve against.
-    this.scopes = [{end: Infinity, depth: 0, base: options.basePath}]
-    this.missingIncludeAt = -1
+    this.depth = depth
   }
 
   get ch() {
@@ -311,77 +307,32 @@ class Parser {
         }
       }
 
-      if(this.expandInclude())
-        continue
-
       break
     }
   }
 
   /**
-   * If the next token is a `"#path"` string, replaces it in the text with
-   * the file's contents. Unlike the LPC implementation, which rewrites the
-   * raw source up front, this only fires where a token begins, so `"#`
-   * inside comments or other strings is left alone.
+   * Resolves a `"#path"` include, decoding the referenced file in its place.
+   * Relative paths resolve against this text's base path, and the included
+   * file's own includes resolve against its directory.
    *
-   * @returns {boolean} True if an include was spliced in.
+   * @param {string} str - The decoded string value, beginning with `#`.
+   * @returns {unknown} The decoded file, or `str` verbatim when the file is
+   *  missing or unreadable.
    */
-  expandInclude() {
-    const quote = this.ch
+  include(str) {
+    const file = this.includes.resolve(str.slice(1), this.options.basePath)
+    const content = this.includes.read(file)
 
-    if(!this.includes || (quote !== "\"" && quote !== "'") ||
-       this.peek() !== "#" || this.pos === this.missingIncludeAt)
-      return false
+    if(content === null || content === undefined)
+      return str
 
-    let close = this.pos + 2
-
-    for(; close < this.text.length - 1; close++) {
-      if(this.text[close] === "\\")
-        close++
-      else if(this.text[close] === quote)
-        break
-    }
-
-    // Unterminated; let the string parser report it.
-    if(this.text[close] !== quote)
-      return false
-
-    while(this.scopes.at(-1).end <= this.pos)
-      this.scopes.pop()
-
-    const scope = this.scopes.at(-1)
-    const target = this.text.slice(this.pos + 2, close)
-    const file = this.includes.resolve(target, scope.base)
-    let content = this.includes.read(file)
-
-    if(content === null || content === undefined) {
-      // Not found - parse it as an ordinary string.
-      this.missingIncludeAt = this.pos
-
-      return false
-    }
-
-    if(scope.depth >= MAX_INCLUDE_DEPTH)
+    if(this.depth >= MAX_INCLUDE_DEPTH)
       this.error(`Include depth exceeded ${MAX_INCLUDE_DEPTH} (circular include?)`)
 
-    if(content.endsWith("\n"))
-      content = content.slice(0, -1)
+    const options = {...this.options, basePath: this.includes.dirname(file)}
 
-    const delta = content.length - (close + 1 - this.pos)
-
-    for(const open of this.scopes)
-      open.end += delta
-
-    this.scopes.push({
-      end: this.pos + content.length,
-      depth: scope.depth + 1,
-      base: this.includes.dirname(file),
-    })
-    this.text =
-      this.text.slice(0, this.pos) + content + this.text.slice(close + 1)
-    this.missingIncludeAt = -1
-
-    return true
+    return new Parser(content, options, this.includes, this.depth + 1).parse()
   }
 
   parseIdentifier() {
@@ -754,8 +705,14 @@ class Parser {
     if(ch === "[")
       return this.parseArray()
 
-    if(ch === "\"" || ch === "'")
-      return this.parseString(ch)
+    // A bare # as the first character marks an include; \# arrives here as
+    // a backslash. Only values are includes, never keys.
+    if(ch === "\"" || ch === "'") {
+      const isInclude = this.includes && this.peek() === "#"
+      const str = this.parseString(ch)
+
+      return isInclude ? this.include(str) : str
+    }
 
     if(ch === "-" || ch === "+" || ch === "." || (ch >= "0" && ch <= "9"))
       return this.parseNumber()
